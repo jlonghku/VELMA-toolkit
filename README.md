@@ -1,12 +1,12 @@
 # Toolkit for VELMA
 
-This repository provides a collection of tools for **eco-hydrological modeling workflows**, including DEM resampling, watershed subdivision, and VELMA parameter optimization.
+This repository provides a collection of tools for **eco-hydrological modeling workflows**, including case downscaleing, watershed subdivision, and parameter optimization.
 
 ---
 
 ## Tools Overview
 
-### 1. VELMA Resampling (`resample_xml`)
+### 1. Case Downscaling for Rapid Running (`resample_xml`)
 Resample Digital Elevation Models (DEM) and associated ecohydrological input data (ASC/CSV/XML).  
 - Preserve hydrologic structure using accumulation-weighted selection.  
 - Weighted mode for categorical rasters (land cover, soils).  
@@ -16,7 +16,7 @@ Resample Digital Elevation Models (DEM) and associated ecohydrological input dat
 
 ---
 
-### 2. Watershed Subdivision (`subdivide_catchments`)
+### 2. Watershed Subdivision for Parallel Running (`subdivide_catchments`)
 Divide large watersheds into subbasins and simulate task scheduling.  
 - Methods: **equal**, **branch**, **layer**.  
 - Task execution simulation and dependency resolution.  
