@@ -12,7 +12,7 @@ Resample Digital Elevation Models (DEM) and associated ecohydrological input dat
 - Weighted mode for categorical rasters (land cover, soils).  
 - Batch XML resampling with visualization support.  
 
-📖 [Read full manual](README_resample.md)
+📖 [Read full manual](docs/README_resample.md)
 
 ---
 
@@ -22,7 +22,7 @@ Divide large watersheds into subbasins and simulate task scheduling.
 - Task execution simulation and dependency resolution.  
 - Visualization: subbasin maps, Gantt charts, and utilization plots.  
 
-📖 [Read full manual](README_subdivide.md)
+📖 [Read full manual](docs/README_subdivide.md)
 
 ---
 
@@ -32,7 +32,7 @@ Optimize parameters of the VELMA model with **Genetic Algorithm (GA)** and **Lat
 - Fitness metrics: **NSE**, **KGE**, with optional soft constraints.  
 - XML parameter editing, DEM resampling, and logging/plotting.  
 
-📖 [Read full manual](README_optimize.md)
+📖 [Read full manual](docs/README_optimize.md)
 
 ---
 

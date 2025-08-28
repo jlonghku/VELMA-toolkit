@@ -1,6 +1,6 @@
 # Quick Start Guide: VELMA Parameter Optimization Toolkit
 
-This is a simplified guide for running parameter optimization with VELMA. For the detailed manual, see [detailed manual](README_optimize_full.md).
+This is a simplified guide for running parameter optimization with VELMA. For the detailed manual, see [detailed manual](README_optimize_details.md).
 
 ---
 

@@ -25,6 +25,12 @@ This toolkit provides utilities for resampling Digital Elevation Models (DEM) an
   Generate DEM and distribution comparison plots for validation.
 
 ---
+## Technical Details
+
+For a full explanation of DEM, categorical raster, continuous raster, and CSV resampling strategies,  
+see the [Resampling Technical Details](README_resample_details.md).
+
+---
 
 ## Installation Requirements
 
