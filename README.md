@@ -6,23 +6,23 @@ This repository provides a collection of tools for **eco-hydrological modeling w
 
 ## Tools Overview
 
-### 1. Case Downscaling for Rapid Running (`resample_xml`)
-Resample Digital Elevation Models (DEM) and associated ecohydrological input data (ASC/CSV/XML).  
-- Preserve hydrologic structure using accumulation-weighted selection.  
-- Weighted mode for categorical rasters (land cover, soils).  
-- Batch XML resampling with visualization support.  
-
-📖 [Read full manual](docs/README_resample.md)
-
----
-
-### 2. Watershed Subdivision for Parallel Running (`subdivide_catchments`)
+### 1. Watershed Subdivision for Parallel Running (`subdivide_catchments`)
 Divide large watersheds into subbasins and simulate task scheduling.  
 - Methods: **equal**, **branch**, **layer**.  
 - Task execution simulation and dependency resolution.  
 - Visualization: subbasin maps, Gantt charts, and utilization plots.  
 
 📖 [Read full manual](docs/README_subdivide.md)
+
+---
+
+### 2. Case Downscaling for Rapid Running (`resample_xml`)
+Resample Digital Elevation Models (DEM) and associated ecohydrological input data (ASC/CSV/XML).  
+- Preserve hydrologic structure using accumulation-weighted selection.  
+- Weighted mode for categorical rasters (land cover, soils).  
+- Batch XML resampling with visualization support.  
+
+📖 [Read full manual](docs/README_resample.md)
 
 ---
 
@@ -52,13 +52,13 @@ Also required:
 ### Example Workflow
 
 ```python
-# --- Resample DEM ---
-from resample import resample_xml
-resample_xml("case.xml", "resampled", downscale_factor=5)
-
 # --- Subdivide Watershed ---
 from subdivide import subdivide_catchments
 subdivide_catchments("dem.asc", col=257, row=32, num_processors=8, num_subbasins=100)
+
+# --- Resample DEM ---
+from resample import resample_xml
+resample_xml("case.xml", "resampled", downscale_factor=5)
 
 # --- Optimize VELMA Parameters ---
 from optimize import VelmaModel, optimize_velma

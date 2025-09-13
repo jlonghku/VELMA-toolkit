@@ -10,7 +10,8 @@ from pysheds.sview import Raster, ViewFinder
 from pyproj import Proj
 from collections import defaultdict, Counter
 import csv,math
-    
+from subdivide import subdivide_catchments
+
 def resample_dem_with_acc(input_asc, resample_asc, outx=None, outy=None, crs="EPSG:4326", downscale_factor=2,plot_dem=False,output_dirs=None):
     """
     Resample a DEM using accumulation-based selection.
@@ -150,7 +151,7 @@ def resample_with_weighted_mode(data, downscale_factor, weight_map=None):
             result[i, j] = counts.most_common(1)[0][0] if counts else 0
     return result
 
-def resample_xml(xml_path, output_folder, downscale_factor=2, crs=None, plot_dem=False, overwrite=True,plot_hist=False,weights=None,change_disturbance_fraction=False):
+def resample_xml(xml_path, output_folder, downscale_factor=2, crs="EPSG:26910", plot_dem=False, overwrite=True,plot_hist=False,weights=None,change_disturbance_fraction=False, num_processors=8, num_subbasins=50, plot_subdivide=False):
     """
     Resample data in an XML file, including DEM and CSV files.
 
@@ -160,6 +161,13 @@ def resample_xml(xml_path, output_folder, downscale_factor=2, crs=None, plot_dem
     - downscale_factor (int): Scaling factor for resampling.
     - crs (str): Coordinate Reference System.
     - plot_dem (bool): If True, plot the DEM.
+    - overwrite (bool): If True, overwrite existing files.
+    - plot_hist (bool): If True, plot histograms for categorical data.
+    - weights (dict): Weights for categorical data resampling.
+    - change_disturbance_fraction (bool): If True, adjust disturbance fractions.
+    - num_processors (int): Number of processors for catchment subdivision.
+    - num_subbasins (int): Number of subbasins for catchment subdivision.
+    - plot_subdivide (bool): If True, plot the subdivided catchments.
     """
     if downscale_factor==1:
         return xml_path
@@ -192,6 +200,7 @@ def resample_xml(xml_path, output_folder, downscale_factor=2, crs=None, plot_dem
             output_asc = os.path.join(output_dirs['asc'], elem.text.split('/')[-1].replace('.asc', f'_resampled_{downscale_factor}.asc'))
             if elem.tag.endswith('input_dem'):
                 colmax, masks=resample_dem_with_acc(input_asc, output_asc, outx= outx, outy=outy, downscale_factor=downscale_factor,plot_dem=plot_dem,output_dirs=output_dirs)
+                outlets=subdivide_catchments(input_asc, outx, outy, num_processors, num_subbasins, method='layer', crs=crs, is_plot=plot_subdivide,save_dir=output_dirs['png'])
                  
             else:
                 with rasterio.open(input_asc) as src:                   
@@ -348,14 +357,15 @@ def resample_xml(xml_path, output_folder, downscale_factor=2, crs=None, plot_dem
 
             elem.text = os.path.relpath(output_file, base_path)        
             print(f"Resampled CSV saved: {output_file}") 
-            
-        elif elem.tag.endswith('initialReachOutlets'): 
-            # Delete initialReachOutlets info, can add manually by tool: divide_catchments.py
-            elem.text = ''
-            print(f"Deleted {elem.tag}")
+
+    for elem in root.iter():
+        if elem.tag.endswith('initialReachOutlets'):
+            elem.text = outlets or ''
+            print(f"Updated {elem.tag}: {elem.text}")
+    
     if plot_hist:
         for key, raw, data in hist_data:
-            plot_distribution_comparison(raw, data, masks, output_dirs=output_dirs, title=f"Distribution Comparison for {key}")
+            plot_distribution_comparison(raw, data, masks, output_dirs=output_dirs, title=f"Distribution Comparison for {key}_resampled_{downscale_factor}")
     output_path = os.path.join(output_dirs['xmls'], os.path.basename(xml_path).replace('.xml', f'_resampled_{downscale_factor}.xml'))
     
     tree.write(xml_output_path, encoding='utf-8', xml_declaration=True)
@@ -377,4 +387,4 @@ if __name__ == "__main__":
     for label in labels:
         xml_file = f'{label}/XML/1.xml'
         print(f"Processing {xml_file}")
-        resample_xml(xml_file, 'resampled', downscale_factor=5, plot_dem=True, overwrite=True, plot_hist=True, weights=weights, change_disturbance_fraction=False)
+        resample_xml(xml_file, 'resampled', downscale_factor=5, num_processors=8, num_subbasins=50, plot_dem=True, plot_subdivide=True, overwrite=True, plot_hist=True, weights=weights, change_disturbance_fraction=False)

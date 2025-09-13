@@ -109,6 +109,9 @@ Central function for resampling all ASC/CSV references in an XML configuration f
 - `plot_hist (bool)` – Generate distribution comparison plots.  
 - `weights (dict)` – Optional weights for categorical rasters.  
 - `change_disturbance_fraction (bool)` – Adjust harvest/disturbance fractions.  
+- `num_processors (int)` – Number of processors for catchment subdivision.
+- `num_subbasins (int)` – Number of subbasins for catchment subdivision.
+- `plot_subdivide (bool)` – If True, plot the subdivided catchments.
 
 **Behavior:**
 - Updates DEM, land cover, soil, and filter maps.  
@@ -122,24 +125,23 @@ Central function for resampling all ASC/CSV references in an XML configuration f
 
 ```python
 if __name__ == "__main__": 
-    labels = ['Big_Beef']  # Example watershed label
     weights = {
         'coverSpeciesIndexMapFileName': {24: 3},  # Weight land cover class 24
         'soilParametersIndexMapFileName': {17: 2} # Weight soil class 17
     }
-    for label in labels:
-        xml_file = f'{label}/XML/1.xml'
-        print(f"Processing {xml_file}")
-        resample_xml(
-            xml_file,
-            'resampled',
-            downscale_factor=5,
-            plot_dem=True,
-            overwrite=True,
-            plot_hist=True,
-            weights=weights,
-            change_disturbance_fraction=False
-        )
+    xml_file = 'Big_Beef/XML/1.xml'
+    resample_xml(
+        xml_file,
+        'resampled',
+        downscale_factor=5,
+        num_processors=8, 
+        num_subbasins=50,
+        plot_dem=True,
+        overwrite=True,
+        plot_hist=True,
+        weights=weights,
+        change_disturbance_fraction=False       
+    )
 ```
 
 ---

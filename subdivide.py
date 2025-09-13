@@ -377,7 +377,7 @@ def find_downstream(fdir,target_points,main_stream_points):
         
     
     
-def subdivide_catchments(asc_file, col, row, num_processors, num_subbasins, method='layer', crs="EPSG:26910", is_plot=False,target_size=None):
+def subdivide_catchments(asc_file, col, row, num_processors, num_subbasins, method='layer', crs="EPSG:26910", is_plot=False,target_size=None,save_dir=None):
     # Initialize the Grid object and add DEM data
     grid = Grid.from_ascii(asc_file, crs=Proj(crs))
     dem = grid.read_ascii(asc_file, crs=Proj(crs))
@@ -616,7 +616,8 @@ def subdivide_catchments(asc_file, col, row, num_processors, num_subbasins, meth
         
         plt.legend()
         plt.colorbar(label='Subbasin ID',boundaries=np.arange(0.5, num_colors + 1.5), ticks=np.arange(2, num_colors + 1, 2))
-        plt.savefig(f'subbasins_{method}.png', dpi=300)
+        save_dir = save_dir or "."
+        plt.savefig(f'{save_dir}/subbasins_{method}.png', dpi=300)
         plt.show()
     
     # Print all target points with indices
@@ -628,9 +629,9 @@ def subdivide_catchments(asc_file, col, row, num_processors, num_subbasins, meth
         print(f"ID {id}: Target Point x={c}, y={r}, Index: {index}, Cells: {cells}")
     print("All indices: ")    
     print(" ".join(map(str, indexes)))
-    
-    simulate_task_execution(num_processors, target_points,is_plot=True,fig_name=f'Gantt_Chart_{method}.png')
-    return target_points
+    save_dir = save_dir or "."
+    simulate_task_execution(num_processors, target_points,is_plot=True,fig_name=f'{save_dir}/Gantt_Chart_{method}.png')
+    return " ".join(map(str, indexes))
 
 if __name__=='__main__':
     # Example usage
@@ -640,3 +641,4 @@ if __name__=='__main__':
     num_processors =8 # Number of processors
     num_subbasins=50 # Divide into 100 subbasins
     subdivide_catchments(asc_file_path, col, row, num_processors, num_subbasins, method='layer', crs=crs, is_plot=True)
+    
