@@ -105,6 +105,6 @@ target_points = subdivide_catchments(
 - **Gantt Chart** – Shows task execution schedules across processors.  
 - **Utilization Plot** – Analyzes basin numbers, makespan, and processor utilization.  
 
-![Comparison of three methods](img/three_methods.png)
+![Comparison of three methods](../img/three_methods.png)
 
 ---
