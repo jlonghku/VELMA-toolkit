@@ -12,7 +12,7 @@ from collections import defaultdict, Counter
 import csv,math
 from subdivide import subdivide_catchments
 
-def resample_dem_with_acc(input_asc, resample_asc, outx=None, outy=None, crs="EPSG:4326", downscale_factor=2,plot_dem=False,output_dirs=None):
+def resample_dem(input_asc, resample_asc, outx=None, outy=None, crs="EPSG:4326", downscale_factor=2,plot_dem=False,output_dirs=None,method='hydro-aware'):
     """
     Resample a DEM using accumulation-based selection.
     
@@ -55,7 +55,7 @@ def resample_dem_with_acc(input_asc, resample_asc, outx=None, outy=None, crs="EP
             block_acc = acc[r0:r1, c0:c1]
 
             total_acc = np.sum(block_acc)
-            if total_acc > 0:
+            if method == 'hydro-aware' and total_acc > 0:
                 corrected_dem[i, j] = np.sum(block_dem * block_acc) / total_acc
             else:
                 corrected_dem[i, j] = np.mean(block_dem)
@@ -199,7 +199,7 @@ def resample_xml(xml_path, output_folder, downscale_factor=2, crs="EPSG:26910", 
             input_asc = elem.text if os.path.isabs(elem.text) else os.path.join(base_path, elem.text)
             output_asc = os.path.join(output_dirs['asc'], elem.text.split('/')[-1].replace('.asc', f'_resampled_{downscale_factor}.asc'))
             if elem.tag.endswith('input_dem'):
-                colmax, masks=resample_dem_with_acc(input_asc, output_asc, outx= outx, outy=outy, downscale_factor=downscale_factor,plot_dem=plot_dem,output_dirs=output_dirs)
+                colmax, masks=resample_dem(input_asc, output_asc, outx= outx, outy=outy, downscale_factor=downscale_factor,plot_dem=plot_dem,output_dirs=output_dirs)
                 outlets=subdivide_catchments(input_asc, outx, outy, num_processors, num_subbasins, method='layer', crs=crs, is_plot=plot_subdivide,save_dir=output_dirs['png'])
                  
             else:
