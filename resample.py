@@ -57,7 +57,7 @@ def resample_dem(input_asc, resample_asc, outx=None, outy=None, crs="EPSG:4326",
             total_acc = np.sum(block_acc)
             if method == 'hydro-aware' and total_acc > 0:
                 corrected_dem[i, j] = np.sum(block_dem * block_acc) / total_acc
-            else:
+            elif method == 'mean' or total_acc == 0:
                 corrected_dem[i, j] = np.mean(block_dem)
 
     new_outx, new_outy = outx// downscale_factor, outy// downscale_factor 
@@ -151,7 +151,7 @@ def resample_with_weighted_mode(data, downscale_factor, weight_map=None):
             result[i, j] = counts.most_common(1)[0][0] if counts else 0
     return result
 
-def resample_xml(xml_path, output_folder, downscale_factor=2, crs="EPSG:26910", plot_dem=False, overwrite=True,plot_hist=False,weights=None,change_disturbance_fraction=False, num_processors=8, num_subbasins=50, plot_subdivide=False):
+def resample_xml(xml_path, output_folder, downscale_factor=2, crs="EPSG:26910", plot_dem=False, overwrite=True,plot_hist=False,weights=None,change_disturbance_fraction=False, num_processors=8, num_subbasins=50, plot_subdivide=False, method='hydro-aware'):
     """
     Resample data in an XML file, including DEM and CSV files.
 
@@ -199,8 +199,8 @@ def resample_xml(xml_path, output_folder, downscale_factor=2, crs="EPSG:26910", 
             input_asc = elem.text if os.path.isabs(elem.text) else os.path.join(base_path, elem.text)
             output_asc = os.path.join(output_dirs['asc'], elem.text.split('/')[-1].replace('.asc', f'_resampled_{downscale_factor}.asc'))
             if elem.tag.endswith('input_dem'):
-                colmax, masks=resample_dem(input_asc, output_asc, outx= outx, outy=outy, downscale_factor=downscale_factor,plot_dem=plot_dem,output_dirs=output_dirs)
-                outlets=subdivide_catchments(input_asc, outx, outy, num_processors, num_subbasins, method='layer', crs=crs, is_plot=plot_subdivide,save_dir=output_dirs['png'])
+                colmax, masks=resample_dem(input_asc, output_asc, outx= outx, outy=outy, downscale_factor=downscale_factor,plot_dem=plot_dem,output_dirs=output_dirs, method=method)
+                outlets=subdivide_catchments(output_asc, outx//downscale_factor, outy//downscale_factor, num_processors, num_subbasins, method='layer', crs=crs, is_plot=plot_subdivide,save_dir=output_dirs['png'])
                  
             else:
                 with rasterio.open(input_asc) as src:                   
@@ -387,4 +387,4 @@ if __name__ == "__main__":
     for label in labels:
         xml_file = f'{label}/XML/1.xml'
         print(f"Processing {xml_file}")
-        resample_xml(xml_file, 'resampled', downscale_factor=5, num_processors=8, num_subbasins=50, plot_dem=True, plot_subdivide=True, overwrite=True, plot_hist=True, weights=weights, change_disturbance_fraction=False)
+        resample_xml(xml_file, 'resampled', downscale_factor=5, num_processors=8, num_subbasins=50, plot_dem=True, plot_subdivide=True, overwrite=True, plot_hist=True, weights=weights, change_disturbance_fraction=False, method='mean')
