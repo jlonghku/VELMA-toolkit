@@ -378,6 +378,8 @@ def find_downstream(fdir,target_points,main_stream_points):
     
     
 def subdivide_catchments(asc_file, col, row, num_processors, num_subbasins, method='layer', crs="EPSG:26910", is_plot=False,target_size=None,save_dir=None):
+    if num_subbasins <=1:
+        return ''
     # Initialize the Grid object and add DEM data
     grid = Grid.from_ascii(asc_file, crs=Proj(crs))
     dem = grid.read_ascii(asc_file, crs=Proj(crs))
@@ -636,9 +638,9 @@ def subdivide_catchments(asc_file, col, row, num_processors, num_subbasins, meth
 if __name__=='__main__':
     # Example usage
     crs = "EPSG:26910"
-    asc_file_path = 'Big_Beef/DataInputs30m/m_1_DEM/Big_Beef_DEM30m_dredgemask_EEX.asc'
-    col, row = 257, 32  # Main outlet coordinates
-    num_processors =8 # Number of processors
-    num_subbasins=50 # Divide into 100 subbasins
-    subdivide_catchments(asc_file_path, col, row, num_processors, num_subbasins, method='layer', crs=crs, is_plot=True)
+    asc_file_path = '/mmfs1/gscratch/ssmc/GRPS/ssmc_psimf/VELMA/jlong/Snohomish/Data_Inputs30m/m_1_DEM/Snohomish_dem30m_dredgemask_EEX.asc'
+    col, row = 614, 1608  # Main outlet coordinates
+    num_processors =30 # Number of processors
+    num_subbasins=80 # Divide into 100 subbasins
+    subdivide_catchments(asc_file_path, col, row, num_processors, num_subbasins, method='equal', crs=crs, is_plot=True)
     

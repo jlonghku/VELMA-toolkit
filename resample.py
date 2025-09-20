@@ -171,7 +171,7 @@ def resample_xml(xml_path, output_folder, downscale_factor=2, crs="EPSG:26910", 
     """
     if downscale_factor==1:
         return xml_path
-    xml_output_path = xml_path.replace('.xml', f'_resampled_{downscale_factor}.xml')
+    xml_output_path = xml_path.replace('.xml', f'_resampled_{downscale_factor}_{method}.xml')
     if os.path.exists(xml_output_path) and not overwrite:
         print(f"Output XML already exists: {xml_output_path}")
         return xml_output_path
@@ -197,7 +197,7 @@ def resample_xml(xml_path, output_folder, downscale_factor=2, crs="EPSG:26910", 
     for elem in root.iter():
         if elem.text and elem.text.endswith('.asc'):
             input_asc = elem.text if os.path.isabs(elem.text) else os.path.join(base_path, elem.text)
-            output_asc = os.path.join(output_dirs['asc'], elem.text.split('/')[-1].replace('.asc', f'_resampled_{downscale_factor}.asc'))
+            output_asc = os.path.join(output_dirs['asc'], elem.text.split('/')[-1].replace('.asc', f'_resampled_{downscale_factor}_{method}.asc'))
             if elem.tag.endswith('input_dem'):
                 colmax, masks=resample_dem(input_asc, output_asc, outx= outx, outy=outy, downscale_factor=downscale_factor,plot_dem=plot_dem,output_dirs=output_dirs, method=method)
                 outlets=subdivide_catchments(output_asc, outx//downscale_factor, outy//downscale_factor, num_processors, num_subbasins, method='layer', crs=crs, is_plot=plot_subdivide,save_dir=output_dirs['png'])
@@ -227,7 +227,7 @@ def resample_xml(xml_path, output_folder, downscale_factor=2, crs="EPSG:26910", 
 
         elif 'weatherLocationsDataFileName' in elem.tag and elem.text.endswith('.csv'):
             input_csv = elem.text if os.path.isabs(elem.text) else os.path.join(base_path, elem.text)
-            output_csv = os.path.join(output_dirs['csv'], elem.text.split('/')[-1].replace('.csv', f'_resampled_{downscale_factor}.csv'))
+            output_csv = os.path.join(output_dirs['csv'], elem.text.split('/')[-1].replace('.csv', f'_resampled_{downscale_factor}_{method}.csv'))
             df = pd.read_csv(input_csv, header=None)
             df.iloc[:, 0] = (df.iloc[:, 0] // downscale_factor).astype(int)
             df.iloc[:, 1] = (df.iloc[:, 1] // downscale_factor).astype(int)
@@ -243,7 +243,7 @@ def resample_xml(xml_path, output_folder, downscale_factor=2, crs="EPSG:26910", 
             
         elif elem.tag.endswith('initializeHistoricalData'):
             input_file=elem.text if os.path.isabs(elem.text) else os.path.join(base_path, elem.text)            
-            output_file = os.path.join(output_dirs['csv'], elem.text.split('/')[-1].rsplit('.', 1)[0] + f'_resampled_{downscale_factor}.csv')
+            output_file = os.path.join(output_dirs['csv'], elem.text.split('/')[-1].rsplit('.', 1)[0] + f'_resampled_{downscale_factor}_{method}.csv')
             data_by_index = defaultdict(list)
             delimiter = ',' if input_file.endswith('.csv') else ' '
             with open(input_file, "r") as f_in:
@@ -286,7 +286,7 @@ def resample_xml(xml_path, output_folder, downscale_factor=2, crs="EPSG:26910", 
 
         elif elem.tag.endswith('modificationsDataFileName'):
             input_file = elem.text if os.path.isabs(elem.text) else os.path.join(base_path, elem.text)
-            output_file = os.path.join(output_dirs['csv'], elem.text.split('/')[-1].rsplit('.', 1)[0] + f'_resampled_{downscale_factor}.csv')
+            output_file = os.path.join(output_dirs['csv'], elem.text.split('/')[-1].rsplit('.', 1)[0] + f'_resampled_{downscale_factor}_{method}.csv')
             data_by_key = defaultdict(list)
             delimiter = ',' if input_file.endswith('.csv') else ' '
         
@@ -325,7 +325,7 @@ def resample_xml(xml_path, output_folder, downscale_factor=2, crs="EPSG:26910", 
 
         elif elem.tag.endswith("initializeSpecificCells"):
             input_file = elem.text if os.path.isabs(elem.text) else os.path.join(base_path, elem.text)
-            output_file = os.path.join(output_dirs['csv'], elem.text.split('/')[-1].rsplit('.', 1)[0] + f'_resampled_{downscale_factor}.csv')
+            output_file = os.path.join(output_dirs['csv'], elem.text.split('/')[-1].rsplit('.', 1)[0] + f'_resampled_{downscale_factor}_{method}.csv')
 
             data_by_index = defaultdict(list)
             delimiter = ',' if input_file.endswith('.csv') else ' '
@@ -365,8 +365,8 @@ def resample_xml(xml_path, output_folder, downscale_factor=2, crs="EPSG:26910", 
     
     if plot_hist:
         for key, raw, data in hist_data:
-            plot_distribution_comparison(raw, data, masks, output_dirs=output_dirs, title=f"Distribution Comparison for {key}_resampled_{downscale_factor}")
-    output_path = os.path.join(output_dirs['xmls'], os.path.basename(xml_path).replace('.xml', f'_resampled_{downscale_factor}.xml'))
+            plot_distribution_comparison(raw, data, masks, output_dirs=output_dirs, title=f"Distribution Comparison for {key}_resampled_{downscale_factor}_{method}")
+    output_path = os.path.join(output_dirs['xmls'], os.path.basename(xml_path).replace('.xml', f'_resampled_{downscale_factor}_{method}.xml'))
     
     tree.write(xml_output_path, encoding='utf-8', xml_declaration=True)
     tree.write(output_path, encoding='utf-8', xml_declaration=True)
@@ -387,4 +387,4 @@ if __name__ == "__main__":
     for label in labels:
         xml_file = f'{label}/XML/1.xml'
         print(f"Processing {xml_file}")
-        resample_xml(xml_file, 'resampled', downscale_factor=5, num_processors=8, num_subbasins=50, plot_dem=True, plot_subdivide=True, overwrite=True, plot_hist=True, weights=weights, change_disturbance_fraction=False, method='mean')
+        resample_xml(xml_file, 'resampled', downscale_factor=4, num_processors=32, num_subbasins=80, plot_dem=True, plot_subdivide=True, overwrite=True, plot_hist=True, weights=weights, change_disturbance_fraction=False, method='hydro-aware')
