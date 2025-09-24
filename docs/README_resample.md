@@ -81,66 +81,86 @@ Compare value distributions between raw and resampled categorical rasters.
 
 ---
 
-### 3. `resample_with_weighted_mode`
-**Description:**  
-Resample categorical rasters using weighted mode (e.g., to bias rare land-cover classes).
+### 3. `resample_with_weights`
 
-**Arguments:**
-- `data (ndarray)` – Input array.  
+**Description**  
+Resample rasters using either average or mode.  
+Automatically switches to weighted average or weighted mode if `acc` (cell weights) or `class_weight_map` (category weights) is provided.
+
+**Arguments**
+- `src_or_data (DatasetReader or ndarray)` – Raster source or array.  
+- `band (int)` – Band index if using a raster source.  
 - `downscale_factor (int)` – Scaling factor.  
-- `weight_map (dict)` – Optional weights for categories.  
+- `method (str)` – `"average"` for continuous data or `"mode"` for categorical data.  
+- `acc (ndarray, optional)` – Cell-level weights for weighted average or mode.  
+- `class_weight_map (dict, optional)` – Category-level weights for weighted mode.  
+- `nodata (float, optional)` – No-data value to ignore.
 
-**Output:**  
-Resampled categorical array.
+**Output**  
+Downscaled array using plain or weighted average/mode depending on inputs.
 
 ---
 
 ### 4. `resample_xml`
-**Description:**  
-Central function for resampling all ASC/CSV references in an XML configuration file.
 
-**Arguments:**
-- `xml_path (str)` – Path to XML file.  
-- `output_folder (str)` – Folder to save outputs (`asc`, `csv`, `xmls`, `png`).  
-- `downscale_factor (int)` – Resampling factor.  
-- `crs (str)` – Coordinate system.  
-- `plot_dem (bool)` – Plot DEM and catchments.  
-- `overwrite (bool)` – Overwrite existing files.  
-- `plot_hist (bool)` – Generate distribution comparison plots.  
-- `weights (dict)` – Optional weights for categorical rasters.  
-- `change_disturbance_fraction (bool)` – Adjust harvest/disturbance fractions.  
-- `num_processors (int)` – Number of processors for catchment subdivision.
-- `num_subbasins (int)` – Number of subbasins for catchment subdivision.
-- `plot_subdivide (bool)` – If True, plot the subdivided catchments.
+**Description**  
+Central routine to downscale all ASC/CSV references in a VELMA-style XML, update paths/shape, and write new XML/rasters.
 
-**Behavior:**
-- Updates DEM, land cover, soil, and filter maps.  
-- Resamples weather station and initialization CSVs.  
-- Removes `initialReachOutlets` (can be regenerated separately).  
-- Updates grid dimensions (`outx`, `outy`).  
+**Arguments**  
+- `xml_path (str)` – Path to input XML.  
+- `output_folder (str)` – Output subfolder (`asc/`, `csv/`, `xmls/`, `png/`).  
+- `downscale_factor (int)` – Resampling factor (>1 to downscale).  
+- `crs (str)` – Target CRS (e.g., `"EPSG:26910"`).  
+- `plot_dem (bool)` – Plot DEM and derived products.  
+- `overwrite (bool)` – Overwrite existing outputs.  
+- `plot_hist (bool)` – Plot category distributions before/after.  
+- `weights (dict)` – Optional class weights for categorical rasters (`{elem.tag: {class: weight}}`).  
+- `change_disturbance_fraction (bool)` – Scale disturbance/harvest fractions by cell-area change.  
+- `num_processors (int)` – Processes for catchment subdivision.  
+- `num_subbasins (int)` – Target number of subbasins.  
+- `plot_subdivide (bool)` – Plot subdivided catchments.  
+- `method (str)` – `"hydro-aware"` or `"hydro-aware-all"`; if `-all`, passes `acc` to weighted resampling.
+
+**Behavior**  
+- Resamples DEM, generates masks/`acc`, and subdivides catchments; writes resampled DEM (`asc/`) and figures (`png/`).  
+- Resamples categorical rasters with **mode** (optionally class-weighted), continuous rasters with **average** (optionally cell-weighted if `hydro-aware-all`).  
+- Resamples weather station and initialization CSVs; rewrites indices under the coarser grid.  
+- Updates grid dims (`outx`, `outy`, `cellX`, `cellY`), output data roots, and all file paths to resampled versions.  
+- Updates `initialReachOutlets` with new outlets derived from the subdivided DEM.  
+- Writes two XMLs: alongside the input and under `xmls/` in the output tree.  
+- Warns if the new domain approaches DEM edges (may break flow paths).
+
+**Output**  
+- Path to the resampled XML.  
+- Side effects: new `asc/`, `csv/`, `xmls/`, `png/` files under `output_folder`.
+ 
 
 ---
 
 ## Example Usage
 
 ```python
-if __name__ == "__main__": 
+if __name__ == "__main__":
+    # optional class weights for categorical maps
     weights = {
-        'coverSpeciesIndexMapFileName': {24: 3},  # Weight land cover class 24
-        'soilParametersIndexMapFileName': {17: 2} # Weight soil class 17
+        'coverSpeciesIndexMapFileName': {24: 3},   # boost land-cover class 24
+        'soilParametersIndexMapFileName': {17: 2}  # boost soil class 17
     }
+
     xml_file = 'Big_Beef/XML/1.xml'
     resample_xml(
         xml_file,
         'resampled',
         downscale_factor=5,
-        num_processors=8, 
+        num_processors=8,
         num_subbasins=50,
         plot_dem=True,
+        plot_subdivide=True,
         overwrite=True,
         plot_hist=True,
         weights=weights,
-        change_disturbance_fraction=False       
+        change_disturbance_fraction=False,
+        method='hydro-aware-all'   # use cell-weighted resampling for all rasters
     )
 ```
 

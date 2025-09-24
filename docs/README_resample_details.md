@@ -23,8 +23,9 @@ This document provides detailed descriptions of the resampling strategies used i
 - **Modes**:  
   - **Majority mode** (default, `Resampling.mode` from Rasterio).  
   - **Weighted mode** (custom, user-defined weights).  
+  - **Hydro-aware mode** (custom, hydro-aware weights).  
 
-Example weight dictionary:
+Example user-defined weight dictionary:
 
 ```python
 {
@@ -41,7 +42,7 @@ If no weights are given, standard majority mode is used.
 ## Continuous Raster Resampling
 
 - Applies to continuous variables such as **NH₄, biomass**.  
-- Resampled using **average pooling** (`Resampling.average`).  
+- Resampled using **average pooling** (`Resampling.average`) or hydro-aware mode.  
 - Preserves magnitude and spatial patterns.
 
 ---
