@@ -38,6 +38,7 @@ def resample_dem(input_asc, resample_asc, outx=None, outy=None, crs="EPSG:4326",
     fdir = grid.flowdir(dem)  # Calculate flow direction
     catch_raw = grid.catchment(x=outx, y=outy, fdir=fdir, xytype='index')  # Get catchment area
     acc = grid.accumulation(fdir)  # Calculate accumulation
+    acc_orig = acc.copy()
     cols, rows = acc.shape
     # Initialize resampled DEM
     rows, cols = dem.shape
@@ -55,7 +56,7 @@ def resample_dem(input_asc, resample_asc, outx=None, outy=None, crs="EPSG:4326",
             block_acc = acc[r0:r1, c0:c1]
 
             total_acc = np.sum(block_acc)
-            if method == 'hydro-aware' and total_acc > 0:
+            if method in ('hydro-aware', 'hydro-aware-all') and total_acc > 0:
                 corrected_dem[i, j] = np.sum(block_dem * block_acc) / total_acc
             elif method == 'mean' or total_acc == 0:
                 corrected_dem[i, j] = np.mean(block_dem)
@@ -84,10 +85,10 @@ def resample_dem(input_asc, resample_asc, outx=None, outy=None, crs="EPSG:4326",
     newgrid.to_ascii(corrected_dem_raster, resample_asc,nodata=newgrid.nodata)  # Save resampled DEM
     fdir = newgrid.flowdir(corrected_dem_raster)
     catch_new = newgrid.catchment(x=new_outx, y=new_outy, fdir=fdir, xytype='index')
+    
     if plot_dem:  
         # corrected_dem_raster[catch == 0] = newgrid.nodata    
         acc = newgrid.accumulation(fdir)
-
         plt.figure(figsize=(10, 8))
         plt.imshow(catch_new, cmap='Blues', interpolation='nearest')
         plt.imshow(np.where(acc > 500, 500, acc), cmap='binary', interpolation='nearest', alpha=0.7)
@@ -95,7 +96,7 @@ def resample_dem(input_asc, resample_asc, outx=None, outy=None, crs="EPSG:4326",
         plt.savefig(os.path.join(output_dirs['png'], f'Resampled_{downscale_factor}_catchment_area.png'), dpi=300)
         plt.show()
     print(f"Resampled DEM saved to: {resample_asc}")
-    return cols, [catch_raw, catch_new]
+    return cols, [catch_raw, catch_new], acc_orig
 
 def plot_distribution_comparison(raw, data, masks=None, output_dirs=None, title='Category Distribution Comparison'):
     def get_pct(arr):
@@ -134,22 +135,64 @@ def plot_distribution_comparison(raw, data, masks=None, output_dirs=None, title=
     plt.show()
 
 
-def resample_with_weighted_mode(data, downscale_factor, weight_map=None):
-    weight_map = weight_map or {}
-    rows, cols = data.shape
-    new_rows = math.ceil(rows / downscale_factor)
-    new_cols = math.ceil(cols / downscale_factor)
-    result = np.zeros((new_rows, new_cols), dtype=data.dtype)
-    for i in range(new_rows):
-        for j in range(new_cols):
-            r0, r1 = i * downscale_factor, min((i + 1) * downscale_factor, rows)
-            c0, c1 = j * downscale_factor, min((j + 1) * downscale_factor, cols)
-            block = data[r0:r1, c0:c1].flatten()
-            counts = Counter(int(v) for v in block if not np.isnan(v))
-            for k in counts:
-                counts[k] *= weight_map.get(k, 1)
-            result[i, j] = counts.most_common(1)[0][0] if counts else 0
-    return result
+def resample_with_weights(src_or_data, band=1, downscale_factor=2, method="average", acc=None, class_weight_map=None, nodata=None):
+    """
+    Two modes only:
+    - "average": plain rasterio average if no weights; weighted average if acc or class_weight_map
+    - "mode":    plain rasterio mode if no weights; weighted mode if acc or class_weight_map
+    """
+    # infer shapes
+    if isinstance(src_or_data, np.ndarray):
+        data = np.asarray(src_or_data)
+        rows, cols = data.shape
+        out_rows, out_cols = math.ceil(rows/downscale_factor), math.ceil(cols/downscale_factor)
+        src = None
+    else:
+        src = src_or_data
+        rows, cols = src.height, src.width
+        out_rows, out_cols = math.ceil(rows/downscale_factor), math.ceil(cols/downscale_factor)
+        data = src.read(band)
+
+    # fast path: no weights -> rasterio kernels
+    if src is not None and acc is None and not class_weight_map:
+        if method == "average":
+            return src.read(band, out_shape=(out_rows, out_cols), resampling=Resampling.average)
+        elif method == "mode":
+            return src.read(band, out_shape=(out_rows, out_cols), resampling=Resampling.mode)
+
+    # prepare weights/masks
+    if acc is not None and acc.shape != data.shape: raise ValueError("acc shape must match data.")
+    if nodata is None and np.issubdtype(data.dtype, np.floating): nodata_mask = np.isnan(data)
+    else: nodata_mask = (data == nodata) if nodata is not None else np.zeros_like(data, bool)
+
+    out = np.zeros((out_rows, out_cols), dtype=data.dtype)
+
+    # vectorized class weights helper
+    get_cw = (lambda v: class_weight_map.get(int(v), 1.0)) if class_weight_map else (lambda v: 1.0)
+    vget_cw = np.vectorize(get_cw, otypes=[float])
+
+    # block loop
+    for i in range(out_rows):
+        r0, r1 = i*downscale_factor, min((i+1)*downscale_factor, rows)
+        for j in range(out_cols):
+            c0, c1 = j*downscale_factor, min((j+1)*downscale_factor, cols)
+            blk = data[r0:r1, c0:c1]; mask = ~nodata_mask[r0:r1, c0:c1]
+            if not np.any(mask): out[i, j] = 0; continue
+            vals = blk[mask].astype(float, copy=False)
+            w = np.ones_like(vals, float)
+            if acc is not None: w *= acc[r0:r1, c0:c1][mask].astype(float, copy=False)
+            if class_weight_map: w *= vget_cw(vals)
+
+            if method == "average":
+                sw = w.sum(); out[i, j] = (vals*w).sum()/sw if sw > 0 else 0
+            else:
+                uniq, inv = np.unique(vals, return_inverse=True)
+                ws = np.bincount(inv, weights=w, minlength=len(uniq))
+                out[i, j] = uniq[np.argmax(ws)].astype(data.dtype, copy=False)
+
+    return out
+
+
 
 def resample_xml(xml_path, output_folder, downscale_factor=2, crs="EPSG:26910", plot_dem=False, overwrite=True,plot_hist=False,weights=None,change_disturbance_fraction=False, num_processors=8, num_subbasins=50, plot_subdivide=False, method='hydro-aware'):
     """
@@ -199,20 +242,21 @@ def resample_xml(xml_path, output_folder, downscale_factor=2, crs="EPSG:26910", 
             input_asc = elem.text if os.path.isabs(elem.text) else os.path.join(base_path, elem.text)
             output_asc = os.path.join(output_dirs['asc'], elem.text.split('/')[-1].replace('.asc', f'_resampled_{downscale_factor}_{method}.asc'))
             if elem.tag.endswith('input_dem'):
-                colmax, masks=resample_dem(input_asc, output_asc, outx= outx, outy=outy, downscale_factor=downscale_factor,plot_dem=plot_dem,output_dirs=output_dirs, method=method)
+                colmax, masks, acc=resample_dem(input_asc, output_asc, outx= outx, outy=outy, downscale_factor=downscale_factor,plot_dem=plot_dem,output_dirs=output_dirs, method=method)
                 outlets=subdivide_catchments(output_asc, outx//downscale_factor, outy//downscale_factor, num_processors, num_subbasins, method='layer', crs=crs, is_plot=plot_subdivide,save_dir=output_dirs['png'])
-                 
-            else:
-                with rasterio.open(input_asc) as src:                   
-                    if elem.tag.endswith('coverSpeciesIndexMapFileName') or elem.tag.endswith('soilParametersIndexMapFileName') or elem.tag.endswith('filterMapFullName'):
-                        if weights is not None and elem.tag in weights:
-                            raw_data = src.read(1)
-                            weight_map = weights[elem.tag]
-                            data = resample_with_weighted_mode(raw_data, downscale_factor, weight_map=weight_map)                       
-                        else:
-                            data =src.read(1,  out_shape=(math.ceil(src.height / downscale_factor), math.ceil(src.width / downscale_factor)), resampling=Resampling.mode)
+    
+    for elem in root.iter():
+        if elem.text and elem.text.endswith('.asc'):
+            input_asc = elem.text if os.path.isabs(elem.text) else os.path.join(base_path, elem.text)
+            output_asc = os.path.join(output_dirs['asc'], elem.text.split('/')[-1].replace('.asc', f'_resampled_{downscale_factor}_{method}.asc'))             
+            
+            if not elem.tag.endswith('input_dem'):
+                with rasterio.open(input_asc) as src:                                      
+                    res_type='mode' if elem.tag.endswith(('coverSpeciesIndexMapFileName','soilParametersIndexMapFileName','filterMapFullName')) else 'average'                    
+                    if method == 'hydro-aware-all':
+                            data = resample_with_weights(src, band=1, downscale_factor=downscale_factor, method=res_type, acc=acc, class_weight_map=weights.get(elem.tag) if weights else None)
                     else:
-                        data = src.read(1,  out_shape=(math.ceil(src.height / downscale_factor), math.ceil(src.width / downscale_factor)), resampling=Resampling.average)
+                        data = resample_with_weights(src, band=1, downscale_factor=downscale_factor, method=res_type, class_weight_map=weights.get(elem.tag) if weights else None)
                     transform = src.transform * src.transform.scale(downscale_factor, downscale_factor)
                     profile = src.profile
                     profile.update(driver='AAIGrid', height=data.shape[0], width=data.shape[1], transform=transform, crs=crs or src.crs)
@@ -357,6 +401,10 @@ def resample_xml(xml_path, output_folder, downscale_factor=2, crs="EPSG:26910", 
 
             elem.text = os.path.relpath(output_file, base_path)        
             print(f"Resampled CSV saved: {output_file}") 
+        elif elem.tag.endswith('initializeOutputDataLocationRoot'):
+            elem.text = elem.text+f'/{downscale_factor}_{method}'
+            print(f"Updated {elem.tag}: {elem.text}")
+
 
     for elem in root.iter():
         if elem.tag.endswith('initialReachOutlets'):
@@ -378,13 +426,11 @@ def resample_xml(xml_path, output_folder, downscale_factor=2, crs="EPSG:26910", 
 
 # Example usage
 if __name__ == "__main__": 
-    labels = ['Cedar', 'Deschutes', 'Duckabush', 'Elwha', 'Nisqually', 'Nooksack', 'Puyallup','Samish', 'Skagit', 'Skokomish', 'Snohomish']
-    labels =[ 'Big_Beef']
-    weights = {
-    'coverSpeciesIndexMapFileName': {24: 3},
-    'soilParametersIndexMapFileName': {17: 2}
-    }
-    for label in labels:
-        xml_file = f'{label}/XML/1.xml'
-        print(f"Processing {xml_file}")
-        resample_xml(xml_file, 'resampled', downscale_factor=4, num_processors=32, num_subbasins=80, plot_dem=True, plot_subdivide=True, overwrite=True, plot_hist=True, weights=weights, change_disturbance_fraction=False, method='hydro-aware')
+   
+    label='Big_Beef'
+    downscale_factor=4
+    method='hydro-aware-all'
+
+    xml_file = f'{label}/XML/orig.xml'
+    print(f"Processing {xml_file}")
+    resample_xml(xml_file, 'resampled', downscale_factor=downscale_factor, num_processors=32, num_subbasins=1, plot_dem=True, plot_subdivide=True, overwrite=True, plot_hist=True, change_disturbance_fraction=False, method=method)
