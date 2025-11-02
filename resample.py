@@ -732,11 +732,11 @@ import sys
 # Example usage
 if __name__ == "__main__": 
    
-    label=sys.argv[1]
-    downscale_factor=int(sys.argv[2])
-    dem_method=sys.argv[3]
-    class_method=sys.argv[4]
-    avg_method=sys.argv[5]
+    label='Big_Beef'
+    downscale_factor=4
+    dem_method= 'hydro-aware'
+    class_method= 'majority'
+    avg_method= 'mean'
 
     xml_file = f'{label}/XML/orig.xml'
     print(f"Processing {xml_file}")

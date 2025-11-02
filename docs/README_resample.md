@@ -1,30 +1,8 @@
-# User Manual: DEM and Input Data Resampling Toolkit
-
-This toolkit provides utilities for resampling Digital Elevation Models (DEM) and associated ecohydrological model input data (e.g., ASC rasters, XML configuration files, CSV inputs). It is designed to support workflows such as **VELMA** model preprocessing, enabling downscaling/upscaling of inputs with consistent catchment hydrology.
-
----
-
-## Features
-
-- **DEM Resampling with Flow Accumulation**  
-  Resample DEMs using accumulation-weighted selection to preserve hydrologic structure.
-
-- **Weighted Mode Resampling**  
-  Supports categorical rasters (e.g., land cover, soil maps) with optional class weighting.
-
-- **XML-based Batch Resampling**  
-  Parses and updates XML configuration files, automatically resampling referenced ASC/CSV files.
-
-- **Distribution Comparison Plots**  
-  Compare class distributions between original and resampled maps.
-
-- **CSV Index Adjustments**  
-  Handles weather station files, historical disturbance data, modification schedules, and initialization values.
-
-- **Visualization Support**  
-  Generate DEM and distribution comparison plots for validation.
+# VELMA / Ecohydro Input Resampling Toolkit
+This toolkit provides utilities for resampling Digital Elevation Models (DEM) and associated ecohydrological model input data (e.g., ASC rasters, XML configuration files, CSV inputs). It is designed to support workflows such as **VELMA** model preprocessing, enabling downscaling/upscaling of inputs with consistent catchment hydrology and ecological functions. For more 
 
 ---
+
 ## Technical Details
 
 For a full explanation of DEM, categorical raster, continuous raster, and CSV resampling strategies,  
@@ -32,159 +10,146 @@ see the [Resampling Technical Details](README_resample_details.md).
 
 ---
 
-## Installation Requirements
+## Key features
 
-### Python Dependencies
-- `numpy`
-- `pandas`
-- `matplotlib`
-- `rasterio`
-- `pysheds`
-- `pyproj`
+- **Hydro-aware DEM resampling**  
+  Downscale DEM by blocks (factor = `downscale_factor`) using flow-accumulation
+  weighted mean; auto pit/depression fill; add 1-cell NODATA rim to stop edge
+  leakage; snap outlet to local max accumulation.  
+  Method controlled by `dem_method='hydro-aware' | 'mean'`.  
+  Output DEM is written under `<base>/<output_folder>/asc/` and XML will be updated.
 
-Install via pip:
-```bash
-pip install numpy pandas matplotlib rasterio pysheds pyproj
-```
+- **Flexible categorical raster resampling**  
+  For `coverSpeciesIndexMapFileName`, `soilParametersIndexMapFileName`,
+  `filterMapFullName` etc., you can choose:
+  - `class_method='majority'` → plain block mode, optionally with user-given weights
+    per class (e.g. to protect rare land cover);
+  - `class_method='hydro-aware'` → mode but weighted by DEM accumulation;
+  - `class_method='auto-weight'` → iterate to match original class percentages;
+  - `class_method='auto-reassign'` → reassign a small number of blocks to match
+    original global class distribution.  
+  These options help avoid losing small-area but hydrologically important classes.
 
----
+- **Continuous raster resampling with masks**  
+  For all other ASC rasters (biomass, NH₄, forcing grids, etc.), use
+  `avg_method`:
+  - `avg_method='mean'` → simple mean;
+  - `avg_method='hydro-aware'` → accumulation-weighted average;
+  - `avg_method='landcover-aware'` → average weighted by land-cover agree mask;
+  - `avg_method='soil-aware'` → average weighted by soil agree mask.  
+  This lets you “project” continuous variables to the class pattern after
+  coarsening.
 
-## Functions
+- **XML-wide resampling**  
+  Central API:  
+  ```python
+  resample_xml(
+      xml_path,
+      output_folder="resampled",
+      downscale_factor=5,
+      crs="EPSG:26910",
+      plot_dem=True,
+      overwrite=True,
+      plot_hist=True,
+      dem_method="hydro-aware",
+      class_method="majority",
+      avg_method="mean",
+      num_processors=8,
+      num_subbasins=1,
+      plot_subdivide=False,
+  )
+  ```  
+  It will:
+  1. parse `<inputDataLocationRootName>` + `<inputDataLocationDirName>` to get
+     the base path;
+  2. resample DEM first and compute `acc`;
+  3. resample all other ASC accordingly;
+  4. resample CSVs that store grid indices;
+  5. update grid size fields (`outx`, `outy`, `cellX`, `cellY`);
+  6. clear & regenerate `initialReachOutlets` from subdivided catchments;
+  7. write **two** updated XMLs:
+     - beside original: `xxx_resampled_<factor>_<dem>-<class>-<avg>.xml`
+     - under `<base>/<output_folder>/xmls/`  
+     so you can track different runs.
 
-### 1. `resample_dem_with_acc`
-**Description:**  
-Resample a DEM with flow accumulation weighting to preserve hydrologic realism.
+- **Start-state folder resampling**  
+  If XML contains a folder-style start state such as  
+  `<setStartStateSpatialDataLocationName>init_state/2020</setStartStateSpatialDataLocationName>`  
+  and that folder really exists under the base path, the toolkit will walk
+  through it, resample every `.asc` inside **with the same strategy** and copy
+  non-ASC files. The XML field will be rewritten to the new folder under
+  `.../asc/<oldname>_resampled_...`.  
+  This is important for long VELMA projects that store multiple initial layers
+  in a directory.
 
-**Arguments:**
-- `input_asc (str)` – Input DEM (ASC format).  
-- `resample_asc (str)` – Output resampled DEM (ASC).  
-- `outx, outy (int)` – Grid dimensions.  
-- `crs (str)` – Coordinate reference system (default: EPSG:4326).  
-- `downscale_factor (int)` – Factor for resampling (e.g., 2 = half resolution).  
-- `plot_dem (bool)` – Plot catchments and accumulation map.  
-- `output_dirs (dict)` – Output directories for plots.  
+- **Catchment subdivision (optional)**  
+  After DEM resampling, you can call `subdivide_catchments(...)` to produce
+  sub-basins for parallel processing or for checking connectivity.
+  This is controlled by `num_processors`, `num_subbasins` and `plot_subdivide`.
 
-**Output:**  
-Saves resampled DEM and returns original/resampled catchments.
-
----
-
-### 2. `plot_distribution_comparison`
-**Description:**  
-Compare value distributions between raw and resampled categorical rasters.
-
-**Arguments:**
-- `raw, data (ndarray)` – Original and resampled arrays.  
-- `masks (tuple)` – Optional masks for comparison.  
-- `output_dirs (dict)` – Output directory for plots/CSV.  
-- `title (str)` – Plot title.  
-
----
-
-### 3. `resample_with_weights`
-
-**Description**  
-Resample rasters using either average or mode.  
-Automatically switches to weighted average or weighted mode if `acc` (cell weights) or `class_weight_map` (category weights) is provided.
-
-**Arguments**
-- `src_or_data (DatasetReader or ndarray)` – Raster source or array.  
-- `band (int)` – Band index if using a raster source.  
-- `downscale_factor (int)` – Scaling factor.  
-- `method (str)` – `"average"` for continuous data or `"mode"` for categorical data.  
-- `acc (ndarray, optional)` – Cell-level weights for weighted average or mode.  
-- `class_weight_map (dict, optional)` – Category-level weights for weighted mode.  
-- `nodata (float, optional)` – No-data value to ignore.
-
-**Output**  
-Downscaled array using plain or weighted average/mode depending on inputs.
-
----
-
-### 4. `resample_xml`
-
-**Description**  
-Central routine to downscale all ASC/CSV references in a VELMA-style XML, update paths/shape, and write new XML/rasters.
-
-**Arguments**  
-- `xml_path (str)` – Path to input XML.  
-- `output_folder (str)` – Output subfolder (`asc/`, `csv/`, `xmls/`, `png/`).  
-- `downscale_factor (int)` – Resampling factor (>1 to downscale).  
-- `crs (str)` – Target CRS (e.g., `"EPSG:26910"`).  
-- `plot_dem (bool)` – Plot DEM and derived products.  
-- `overwrite (bool)` – Overwrite existing outputs.  
-- `plot_hist (bool)` – Plot category distributions before/after.  
-- `weights (dict)` – Optional class weights for categorical rasters (`{elem.tag: {class: weight}}`).  
-- `change_disturbance_fraction (bool)` – Scale disturbance/harvest fractions by cell-area change.  
-- `num_processors (int)` – Processes for catchment subdivision.  
-- `num_subbasins (int)` – Target number of subbasins.  
-- `plot_subdivide (bool)` – Plot subdivided catchments.  
-- `method (str)` – `"hydro-aware"` or `"hydro-aware-all"`; if `-all`, passes `acc` to weighted resampling.
-
-**Behavior**  
-- Resamples DEM, generates masks/`acc`, and subdivides catchments; writes resampled DEM (`asc/`) and figures (`png/`).  
-- Resamples categorical rasters with **mode** (optionally class-weighted), continuous rasters with **average** (optionally cell-weighted if `hydro-aware-all`).  
-- Resamples weather station and initialization CSVs; rewrites indices under the coarser grid.  
-- Updates grid dims (`outx`, `outy`, `cellX`, `cellY`), output data roots, and all file paths to resampled versions.  
-- Updates `initialReachOutlets` with new outlets derived from the subdivided DEM.  
-- Writes two XMLs: alongside the input and under `xmls/` in the output tree.  
-- Warns if the new domain approaches DEM edges (may break flow paths).
-
-**Output**  
-- Path to the resampled XML.  
-- Side effects: new `asc/`, `csv/`, `xmls/`, `png/` files under `output_folder`.
- 
+- **Output redirection for model results**  
+  `<initializeOutputDataLocationRoot>` will be suffixed with
+  `/<downscale>_<dem>-<class>-<avg>` so that you can run multiple coarsened
+  projects side by side.
 
 ---
 
-## Example Usage
+## Supported input types
+
+1. **DEM (ASC)** – hydrologically conditioned, downscaled, rimmed.  
+2. **Categorical ASC** – land cover / soil / filter maps with multiple strategies.  
+3. **Continuous ASC** – biomass, nitrogen, disturbance maps, etc.  
+4. **CSV with grid indices** –  
+   - `weatherLocationsDataFileName` → (col // factor, row // factor), path normalized for Windows;  
+   - `initializeHistoricalData` → re-index + merge by new index;  
+   - `modificationsDataFileName` → re-index + pick majority record per (t1, t2, new_idx);  
+   - `initializeSpecificCells` → re-index + average values in the same new cell.  
+   This part is what lets you keep VELMA’s “flat index” inputs after coarsening.
+
+---
+
+## CLI / Example
 
 ```python
 if __name__ == "__main__":
-    # optional class weights for categorical maps
-    weights = {
-        'coverSpeciesIndexMapFileName': {24: 3},   # boost land-cover class 24
-        'soilParametersIndexMapFileName': {17: 2}  # boost soil class 17
-    }
+    label = "Big_Beef"
+    xml_file = f"{label}/XML/1.xml"
 
-    xml_file = 'Big_Beef/XML/1.xml'
     resample_xml(
         xml_file,
-        'resampled',
-        downscale_factor=5,
-        num_processors=8,
-        num_subbasins=50,
+        "resampled",
+        downscale_factor=2,
+        crs="EPSG:26910",
         plot_dem=True,
         plot_subdivide=True,
         overwrite=True,
         plot_hist=True,
-        weights=weights,
-        change_disturbance_fraction=False,
-        method='hydro-aware-all'   # use cell-weighted resampling for all rasters
+        dem_method="hydro-aware",
+        class_method="majority",
+        avg_method="mean",
+        num_processors=8,
+        num_subbasins=4,
     )
 ```
 
 ---
 
-## Output Structure
+## Notes / Pitfalls
 
-After running `resample_xml`, outputs are organized into:
-
-```
-<base_path>/<output_folder>/
-    ├── asc/     # Resampled ASC files
-    ├── csv/     # Resampled CSV files
-    ├── xmls/    # Updated XML files
-    ├── png/     # DEM & distribution plots
-```
-
----
-
-## Notes & Warnings
-
-- Large downscale factors may push catchments near DEM edges, causing **Index -1 errors** in VELMA.  
-- Check and adjust `ReachMap` manually if flow paths are broken.  
-- For categorical rasters, provide **weights** to prevent minority class loss.  
-- Use `plot_hist=True` to verify class proportions before/after resampling.
+- Very large `downscale_factor` can push the watershed too close to DEM edge,
+  which may break the routed river network and VELMA can report `'Index -1'`
+  or similar errors. Check and reduce the factor if this happens.  
+- Make sure paths in XML are **relative to** `<inputDataLocationRootName>/<inputDataLocationDirName>`,
+  and that folder-style inputs actually exist, otherwise `os.path.isdir(...)`
+  on Windows will fail.  
+- For categorical maps with important small patches, prefer
+  `class_method='majority'` with a weight map or `class_method='auto-reassign'`.  
+- Use `plot_hist=True` to visually check class percentages before/after.
 
 ---
+
+## Installation
+
+```bash
+pip install numpy pandas matplotlib rasterio pysheds pyproj
+```
