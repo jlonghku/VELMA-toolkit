@@ -170,7 +170,8 @@ def resample_with_weights(src_or_data,
                           auto_reassign=False,
                           # --- updated params ---
                           average_strategy="mean",       # 'mean' | 'mask' | 'acc' | 'acc_mask'
-                          avg_mask=None):
+                          avg_mask=None,
+                          hellinger_tol=1e-3):
 
     rng = np.random.default_rng(seed)
 
@@ -202,6 +203,25 @@ def resample_with_weights(src_or_data,
         if a.size == 0: return {}
         k, c = np.unique(a, return_counts=True)
         return {int(kk): float(cc/c.sum()) for kk, cc in zip(k, c)}
+    
+    def hellinger_distance(p_dict, q_dict):
+        """Compute Hellinger distance between two discrete distributions."""
+        classes = set(p_dict) | set(q_dict)
+        if not classes:
+            return 0.0
+        classes = sorted(classes)
+        p = np.array([p_dict.get(k, 0.0) for k in classes], dtype=float)
+        q = np.array([q_dict.get(k, 0.0) for k in classes], dtype=float)
+        # defensive normalization
+        p = np.clip(p, 0.0, 1.0)
+        q = np.clip(q, 0.0, 1.0)
+        sp = p.sum()
+        sq = q.sum()
+        if sp > 0:
+            p /= sp
+        if sq > 0:
+            q /= sq
+        return float(np.sqrt(((np.sqrt(p) - np.sqrt(q)) ** 2).sum()) / np.sqrt(2.0))
 
     def block_mode(w_map=None):
         """Return per-block mode (weighted if provided) and a full-size agree mask."""
@@ -301,6 +321,13 @@ def resample_with_weights(src_or_data,
             cur_pct = {int(kk): float(cc/c.sum()) for kk, cc in zip(k, c)}
             classes = set(target_pct) | set(cur_pct)
             if not classes: break
+
+            # Hellinger-based stopping condition
+            if hellinger_tol is not None:
+                hell = hellinger_distance(target_pct, cur_pct)
+                if hell <= hellinger_tol:
+                    break
+
             max_err = max(abs(target_pct.get(k,0.0) - cur_pct.get(k,0.0)) for k in classes)
             if max_err <= tol: break
             up = {}
@@ -340,6 +367,26 @@ def resample_with_weights(src_or_data,
         N = max(a.size, 1)
         k, c = np.unique(a, return_counts=True)
         cur_pct = {int(kk): float(cc/N) for kk, cc in zip(k, c)}
+
+        # Early stop if Hellinger distance already small
+        if hellinger_tol is not None:
+            hell = hellinger_distance(target_pct, cur_pct)
+            if hell <= hellinger_tol:
+                agree_mask = np.zeros_like(data, dtype=np.uint8)
+                for i in range(out_rows):
+                    r0, r1 = i*downscale_factor, min((i+1)*downscale_factor, rows)
+                    for j in range(out_cols):
+                        c0, c1 = j*downscale_factor, min((j+1)*downscale_factor, cols)
+                        m = ~nodata_mask[r0:r1, c0:c1]
+                        if not np.any(m): 
+                            continue
+                        chosen = assign[i, j]
+                        blk = data[r0:r1, c0:c1]
+                        am = (blk == chosen).astype(np.uint8)
+                        am[~m] = 0
+                        agree_mask[r0:r1, c0:c1] = am
+                return assign, agree_mask
+
         need = {k: max(0, int(np.floor((target_pct.get(k,0.0)-cur_pct.get(k,0.0))*N + 1e-9)))
                 for k in set(target_pct) | set(cur_pct)}
 
@@ -406,9 +453,6 @@ def resample_with_weights(src_or_data,
     # plain mode
     out, _, agree = block_mode(w_map=None)
     return out, agree
-
-
-
 
 
 def resample_xml(xml_path, output_folder, downscale_factor=2, crs="EPSG:26910", plot_dem=False, overwrite=True,plot_hist=False,weights=None,change_disturbance_fraction=False, num_processors=8, num_subbasins=1, plot_subdivide=False, dem_method='hydro-aware', class_method='mode',avg_method='mean'):

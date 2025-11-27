@@ -1,11 +1,11 @@
 # VELMA / Ecohydro Input Resampling Toolkit
-This toolkit provides utilities for resampling Digital Elevation Models (DEM) and associated ecohydrological model input data (e.g., ASC rasters, XML configuration files, CSV inputs). It is designed to support workflows such as **VELMA** model preprocessing, enabling downscaling/upscaling of inputs with consistent catchment hydrology and ecological functions. For more 
+This toolkit provides utilities for resampling Digital Elevation Models (DEM) and associated ecohydrological model input data (e.g., ASC rasters, XML configuration files, CSV inputs). It is designed to support workflows such as **VELMA** model preprocessing, enabling downscaling/upscaling of inputs with consistent catchment hydrology and ecological functions.
 
 ---
 
 ## Technical Details
 
-For a full explanation of DEM, categorical raster, continuous raster, and CSV resampling strategies,  
+For a full explanation of DEM, categorical raster, continuous raster, and CSV resampling strategies, including distribution matching and Hellinger-based stopping criteria,  
 see the [Resampling Technical Details](README_resample_details.md).
 
 ---
@@ -25,9 +25,12 @@ see the [Resampling Technical Details](README_resample_details.md).
   - `class_method='majority'` → plain block mode, optionally with user-given weights
     per class (e.g. to protect rare land cover);
   - `class_method='hydro-aware'` → mode but weighted by DEM accumulation;
-  - `class_method='auto-weight'` → iterate to match original class percentages;
+  - `class_method='auto-weight'` → iterate to match original class percentages,
+    using both an absolute percentage tolerance (`tol`) and an optional
+    Hellinger distance threshold (`hellinger_tol`);
   - `class_method='auto-reassign'` → reassign a small number of blocks to match
-    original global class distribution.  
+    the original global class distribution, with early stopping when the
+    Hellinger distance falls below `hellinger_tol`.  
   These options help avoid losing small-area but hydrologically important classes.
 
 - **Continuous raster resampling with masks**  
@@ -144,6 +147,10 @@ if __name__ == "__main__":
   on Windows will fail.  
 - For categorical maps with important small patches, prefer
   `class_method='majority'` with a weight map or `class_method='auto-reassign'`.  
+- When using `auto-weight` or `auto-reassign`, class distribution matching stops
+  once both the class-percentage error (`tol`) and Hellinger distance
+  (`hellinger_tol`) are below their thresholds, which prevents overfitting the
+  global histogram at the cost of spatial coherence.  
 - Use `plot_hist=True` to visually check class percentages before/after.
 
 ---
