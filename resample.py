@@ -957,8 +957,8 @@ if __name__ == "__main__":
    
     label='Big_Beef'
     downscale_factor=4
-    dem_method= 'burn-streams'
-    class_method= 'auto-reassign'
+    dem_method= 'hydro-aware'
+    class_method= 'majority'
     avg_method= 'mean'
 
     xml_file = f'{label}/XML/orig.xml'
