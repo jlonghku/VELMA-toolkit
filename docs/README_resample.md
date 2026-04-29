@@ -1,5 +1,5 @@
 # VELMA / Ecohydro Input Resampling Toolkit
-This toolkit provides utilities for resampling Digital Elevation Models (DEM) and associated ecohydrological model input data (e.g., ASC rasters, XML configuration files, CSV inputs). It is designed to support workflows such as **VELMA** model preprocessing, enabling downscaling/upscaling of inputs with consistent catchment hydrology and ecological functions.
+This toolkit provides utilities for resampling Digital Elevation Models (DEM) and associated ecohydrological model input data (e.g., ASC rasters, XML configuration files, CSV inputs). It is designed to support workflows such as **VELMA** model preprocessing, enabling coarsening of inputs with consistent catchment hydrology and ecological functions.
 
 ---
 
@@ -12,11 +12,18 @@ see the [Resampling Technical Details](README_resample_details.md).
 
 ## Key features
 
-- **Hydro-aware DEM resampling**  
-  Downscale DEM by blocks (factor = `downscale_factor`) using flow-accumulation
-  weighted mean; auto pit/depression fill; add 1-cell NODATA rim to stop edge
-  leakage; snap outlet to local max accumulation.  
-  Method controlled by `dem_method='hydro-aware' | 'mean'`.  
+- **DEM resampling**  
+  Downscale DEM by blocks (factor = `downscale_factor`) or by Whitebox
+  resampling tools; auto pit/depression fill; add 1-cell NODATA rim to stop
+  edge leakage; snap outlet to local max accumulation.  
+  Method controlled by:
+  - `dem_method='hydro-aware'` → flow-accumulation weighted block mean;
+  - `dem_method='mean'` → plain block mean;
+  - `dem_method='nearest'` → Whitebox nearest-neighbour resampling;
+  - `dem_method='bilinear'` → Whitebox bilinear resampling;
+  - `dem_method='burn-streams'` → bilinear resampling plus stream burning;
+  - `dem_method='burn-breach'` → least-cost breach plus stream burning.  
+  `cubic` and `feature-preserving` are not supported in the modified version.  
   Output DEM is written under `<base>/<output_folder>/asc/` and XML will be updated.
 
 - **Flexible categorical raster resampling**  
@@ -31,6 +38,10 @@ see the [Resampling Technical Details](README_resample_details.md).
   - `class_method='auto-reassign'` → reassign a small number of blocks to match
     the original global class distribution, with early stopping when the
     Hellinger distance falls below `hellinger_tol`.  
+  `class_method='mode'` is accepted as a backward-compatible alias for
+  `majority`, but `majority` is the default and recommended name.
+  Hydro-aware categorical mode falls back to unweighted majority when all
+  accumulation weights in a block are zero.
   These options help avoid losing small-area but hydrologically important classes.
 
 - **Continuous raster resampling with masks**  
@@ -107,6 +118,9 @@ see the [Resampling Technical Details](README_resample_details.md).
    - `initializeHistoricalData` → re-index + merge by new index;  
    - `modificationsDataFileName` → re-index + pick majority record per (t1, t2, new_idx);  
    - `initializeSpecificCells` → re-index + average values in the same new cell.  
+   Flat-index CSV remapping uses `ceil(original_col_count / downscale_factor)`
+   for the new column count, matching the raster output shape when the source
+   width is not evenly divisible by the downscale factor.  
    This part is what lets you keep VELMA’s “flat index” inputs after coarsening.
 
 ---
@@ -147,10 +161,15 @@ if __name__ == "__main__":
   on Windows will fail.  
 - For categorical maps with important small patches, prefer
   `class_method='majority'` with a weight map or `class_method='auto-reassign'`.  
-- When using `auto-weight` or `auto-reassign`, class distribution matching stops
-  once both the class-percentage error (`tol`) and Hellinger distance
-  (`hellinger_tol`) are below their thresholds, which prevents overfitting the
-  global histogram at the cost of spatial coherence.  
+- `auto-weight` keeps the best Hellinger-distance result seen across iterations
+  so oscillating weight updates do not return a worse final map.  
+- `auto-reassign` converts target percentages to integer coarse-cell counts
+  using a largest-remainder rule, so small fractional improvements are not
+  dropped by flooring. It can consider any ranked class present in a block, not
+  only ranks 2-4.  
+- When using `auto-weight` or `auto-reassign`, `hellinger_tol` provides an early
+  stopping threshold. For `auto-weight`, `tol` is also used as a maximum class
+  percentage error stopping threshold.
 - Use `plot_hist=True` to visually check class percentages before/after.
 
 ---
@@ -158,5 +177,5 @@ if __name__ == "__main__":
 ## Installation
 
 ```bash
-pip install numpy pandas matplotlib rasterio pysheds pyproj
+pip install numpy pandas matplotlib rasterio pysheds pyproj whitebox-workflows
 ```

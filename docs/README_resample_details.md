@@ -14,7 +14,16 @@ This document provides detailed descriptions of the resampling strategies used i
    - compute flow direction + flow accumulation (`acc0`).  
    This step provides the accumulation array used by later steps.
 
-2. **Block downscaling**  
+2. **DEM method selection**  
+   The modified code supports six DEM methods:
+   - `hydro-aware`: flow-accumulation weighted block mean;
+   - `mean`: plain block mean;
+   - `nearest`: Whitebox nearest-neighbour resampling;
+   - `bilinear`: Whitebox bilinear resampling;
+   - `burn-streams`: bilinear resampling followed by stream burning;
+   - `burn-breach`: least-cost breaching followed by stream burning.  
+
+3. **Block downscaling methods (`hydro-aware`, `mean`)**  
    - new shape = `ceil(rows/f) × ceil(cols/f)`  
    - for each source block:  
      - if `dem_method='hydro-aware'` and block accumulation sum > 0 → weighted
@@ -25,14 +34,24 @@ This document provides detailed descriptions of the resampling strategies used i
      slightly (`-0.01`).  
    Rationale: coarse DEM must still drain to the target outlet.
 
-3. **Rim and re-routing**  
+4. **Whitebox methods (`nearest`, `bilinear`, `burn-streams`, `burn-breach`)**  
+   - Whitebox resamples the DEM to `original_cell_size * downscale_factor`;  
+   - `nearest` uses nearest-neighbour resampling;  
+   - `bilinear`, `burn-streams`, and `burn-breach` use bilinear resampling;  
+   - `burn-breach` first applies least-cost breaching before stream extraction;  
+   - `burn-streams` and `burn-breach` derive streams from D8 flow accumulation
+     and burn them into the resampled DEM.  
+   Burn parameters depend on `downscale_factor`, with larger factors using
+   larger stream thresholds and smaller burn gradients.
+
+5. **Rim and re-routing**  
    - a 1-cell NODATA rim is added around the DEM to stop leakage across tile
      boundary;  
    - flow direction & accumulation are recomputed on the rimmed raster;  
    - outlet is snapped to the local max accumulation in a 3×3 window.  
    The final catchment is extracted on this recomputed network.
 
-4. **Export**  
+6. **Export**  
    DEM is written as ASCII with updated affine (scaled by factor). Plot is
    optional and saved under `.../png/` when `plot_dem=True`.  
    The function returns:  
@@ -55,9 +74,14 @@ specified in the XML. Current code supports **four** strategies:
    - ties are randomly broken.  
    Use this if you know which classes should be protected.
 
+   `class_method='mode'` is accepted as a backward-compatible alias for
+   `majority`, but `majority` is the default and recommended name.
+
 2. **`class_method='hydro-aware'`**  
    - same as majority, but each pixel is also multiplied by the DEM accumulation
      of that pixel;  
+   - if all accumulation weights in a block are zero, non-finite, or otherwise
+     unusable, the method falls back to unweighted majority for that block;  
    - idea: pixels that actually receive more upstream flow should dominate the
      coarsened class.  
    Works well for riparian or channel-adjacent classes.
@@ -68,6 +92,9 @@ specified in the XML. Current code supports **four** strategies:
      with the original map (before coarsening);  
    - update class weights to shrink the difference, clipped to a reasonable
      range;  
+   - keep the best map seen across iterations using Hellinger distance first and
+     maximum class-percentage error second, so an oscillating sequence does not
+     return a worse final iteration;  
    - stopping criteria combine:
      - a maximum allowed absolute percentage error (`tol`), and  
      - an optional Hellinger distance threshold (`hellinger_tol`) between the
@@ -76,15 +103,19 @@ specified in the XML. Current code supports **four** strategies:
    the overall histogram close to the original without over-tuning.
 
 4. **`class_method='auto-reassign'`**  
-   - first do a plain per-block assignment but record top-k candidates in each
-     block;  
+   - first do a plain per-block assignment and record all candidate classes in
+     each block, ordered by within-block frequency;  
    - compute the global histogram of this initial assignment and compare it with
      the original histogram; if the Hellinger distance is already below
      `hellinger_tol` (when provided), no reassignment is performed;  
-   - otherwise, look at the global histogram and selectively reassign blocks
-     that have the target class as 2nd/3rd candidate;  
-   - reassign only a small number to hit the target percentages, again without
-     forcing an exact match that would break spatial coherence.  
+   - convert target percentages into integer coarse-cell counts with a
+     largest-remainder rule, so small maps do not lose useful fractional target
+     counts through flooring;  
+   - otherwise, look at the global histogram and selectively reassign surplus
+     classes to underrepresented classes;  
+   - a target class can be considered at any rank within a block, not only ranks
+     2-4; candidates are preferred by lower rank, stronger within-block support,
+     and larger surplus in the class being replaced.  
    Use this when class distribution is critical (e.g. scenario modeling), but
    you still want a soft stopping rule based on distribution similarity.
 
@@ -133,6 +164,9 @@ strategy by `avg_method`:
 
 Several VELMA inputs use **flattened grid index** (`row * ncol + col`). After
 coarsening, both row and `ncol` change → the index must be recomputed.
+The modified code uses `new_colmax = ceil(original_col_count / downscale_factor)`
+for flat-index remapping, matching the raster output width when the source
+column count is not evenly divisible by the downscale factor.
 
 1. **`initializeHistoricalData`**  
    - read each line → old_index → (row, col);  
