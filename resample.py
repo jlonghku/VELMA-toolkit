@@ -951,7 +951,6 @@ def resample_xml(xml_path, output_folder, downscale_factor=2, crs="EPSG:26910", 
     print("Check the ReachMap and modify resampled DEM, or reduce the downscale factor.")
     return xml_output_path
 
-import sys
 # Example usage
 if __name__ == "__main__": 
    
