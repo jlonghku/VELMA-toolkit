@@ -17,12 +17,20 @@ Divide large watersheds into subbasins and simulate task scheduling.
 ---
 
 ### 2. Case Downscaling for Rapid Running (`resample_xml`)
-Resample Digital Elevation Models (DEM) and associated ecohydrological input data (ASC/CSV/XML).  
-- Preserve hydrologic structure using accumulation-weighted selection.  
-- Weighted mode for categorical rasters (land cover, soils).  
-- Batch XML resampling with visualization support.  
+Resample Digital Elevation Models (DEM) and associated ecohydrological input data (ASC/CSV/XML).
 
-📖 [Read full manual](docs/README_resample.md)
+- **DEM methods:** `hydro-aware` (default) uses flow-accumulation-weighted
+  block aggregation to emphasize dominant drainage paths; `mean`, `nearest`,
+  `bilinear`, `burn-streams`, and `burn-breach` are also available.
+- **Categorical rasters:** use `majority`, accumulation-weighted
+  `hydro-aware`, or the distribution-matching `auto-weight` and
+  `auto-reassign` methods for land cover, soils, and filter maps.
+- **Continuous rasters:** use a block mean, a Hydro-aware accumulation-weighted
+  mean, or land-cover/soil-aware averaging.
+- Batch XML resampling with visualization support.
+
+📖 [Read full manual](docs/README_resample.md) ·
+[Technical formulation](docs/README_resample_details.md)
 
 ---
 
