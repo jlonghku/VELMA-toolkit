@@ -8,6 +8,41 @@ This toolkit provides utilities for resampling Digital Elevation Models (DEM) an
 For a full explanation of DEM, categorical raster, continuous raster, and CSV resampling strategies, including distribution matching and Hellinger-based stopping criteria,  
 see the [Resampling Technical Details](README_resample_details.md).
 
+### Method model at a glance
+
+Let \(F(C)\) be the valid fine-grid cells contained in coarse cell \(C\).
+Continuous rasters are coarsened with the common weighted operator
+
+$$
+\widetilde{x}_C =
+\frac{\sum_{i\in F(C)} q_i x_i}{\sum_{i\in F(C)} q_i},
+$$
+
+where the implemented weights are \(q_i=1\) (`mean`), \(q_i=a_i\)
+(`hydro-aware`, with \(a_i\) denoting flow accumulation), or a 0/1 agreement
+mask for `landcover-aware` and `soil-aware`.
+
+Categorical rasters use a weighted-majority operator rather than averaging
+class IDs:
+
+$$
+\widetilde{c}_C=\arg\max_{k\in K}
+\sum_{i\in F(C)} q_i\,\mathbf{1}(c_i=k).
+$$
+
+`majority` uses equal votes, `hydro-aware` uses accumulation-weighted votes,
+`auto-weight` adjusts class-level vote multipliers, and `auto-reassign`
+corrects remaining watershed-scale class-count bias among locally available
+classes. The two automatic methods compare the original and coarse class
+distributions using Hellinger distance.
+
+The current implementation assumes a regular raster, uses equal-area cell
+counts, and sets the hydrological weighting function to \(g(a)=a\). The
+technical-details document also gives the area-weighted and
+\(g(a)=a^\gamma\) formulations from the Supporting Information as
+mathematical extensions; those generalized forms are not exposed as runtime
+options in the current code.
+
 ---
 
 ## Key features
@@ -15,7 +50,10 @@ see the [Resampling Technical Details](README_resample_details.md).
 - **DEM resampling**  
   Downscale DEM by blocks (factor = `downscale_factor`) or by Whitebox
   resampling tools; auto pit/depression fill; add 1-cell NODATA rim to stop
-  edge leakage; snap outlet to local max accumulation.  
+  edge leakage; snap outlet to local max accumulation. For the implemented
+  hydro-aware block method,
+  \(\widetilde{z}_C=\sum_i a_i z_i/\sum_i a_i\), with a plain-mean fallback
+  when the block accumulation sum is zero.
   Method controlled by:
   - `dem_method='hydro-aware'` → flow-accumulation weighted block mean;
   - `dem_method='mean'` → plain block mean;
@@ -42,7 +80,9 @@ see the [Resampling Technical Details](README_resample_details.md).
   `majority`, but `majority` is the default and recommended name.
   Hydro-aware categorical mode falls back to unweighted majority when all
   accumulation weights in a block are zero.
-  These options help avoid losing small-area but hydrologically important classes.
+  With the default `seed=0` in the low-level API, random tie-breaking is
+  reproducible. These options help avoid losing small-area but hydrologically
+  important classes.
 
 - **Continuous raster resampling with masks**  
   For all other ASC rasters (biomass, NH₄, forcing grids, etc.), use
